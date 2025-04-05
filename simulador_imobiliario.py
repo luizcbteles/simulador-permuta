@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-# SAC com juros simples mensal
+# ========= SAC com juros ==========
 def gerar_sac(valor_total, meses, taxa_mensal):
     saldo = valor_total
     amortizacao = valor_total / meses
@@ -15,7 +15,7 @@ def gerar_sac(valor_total, meses, taxa_mensal):
         saldo -= amortizacao
     return parcelas
 
-# TIR com proteção
+# ========= TIR com proteção ==========
 def calcular_tir(fluxos, chute=0.1, max_iter=100, tol=1e-6):
     taxa = chute
     for _ in range(max_iter):
@@ -31,16 +31,24 @@ def calcular_tir(fluxos, chute=0.1, max_iter=100, tol=1e-6):
             return None
     return None
 
-# Simulador principal
-def simular_investidor(valor_permuta, parcelas_terreno, juros_mensal,
-                       inicio_vendas, curva, inicio_obra, duracao_obra, meses_total=120):
-
+# ========= Simulador principal ==========
+def simular_investidor(
+    valor_pago_terreno,
+    valor_recebido_permuta,
+    parcelas_terreno,
+    juros_mensal,
+    inicio_vendas,
+    curva,
+    inicio_obra,
+    duracao_obra,
+    meses_total=120
+):
     entrada = [0] * meses_total
     parcelas = [0] * meses_total
     chaves = [0] * meses_total
     fluxo = [0] * meses_total
 
-    # Define curva de vendas
+    # === curva de vendas ===
     if curva == "Normal":
         pct_inicio = 0.35
         pct_mes = 0.06
@@ -60,12 +68,12 @@ def simular_investidor(valor_permuta, parcelas_terreno, juros_mensal,
             vendas_percentuais[i] = min(pct_mes, 1 - acumulado)
             acumulado += vendas_percentuais[i]
 
-    # Calcular mês das chaves
+    # === mês das chaves ===
     mes_chaves = inicio_obra + duracao_obra - 1
 
     for mes in range(meses_total):
         pct = vendas_percentuais[mes]
-        venda_valor = valor_permuta * pct
+        venda_valor = valor_recebido_permuta * pct
         if venda_valor > 0:
             entrada[mes] = venda_valor * 0.10
 
@@ -78,9 +86,9 @@ def simular_investidor(valor_permuta, parcelas_terreno, juros_mensal,
             if mes_chaves - 1 < meses_total:
                 chaves[mes_chaves - 1] += venda_valor * 0.70
 
-    # Pagamento do terreno
+    # === fluxo do investidor ===
     fluxo_investidor = [0] * meses_total
-    parcela_terreno = valor_permuta / parcelas_terreno
+    parcela_terreno = valor_pago_terreno / parcelas_terreno
     for i in range(parcelas_terreno):
         fluxo_investidor[i] = -parcela_terreno
 
@@ -89,39 +97,49 @@ def simular_investidor(valor_permuta, parcelas_terreno, juros_mensal,
 
     df = pd.DataFrame({
         'Mês': list(range(1, meses_total + 1)),
-        'Entrada 10%': entrada,
+        'Entrada (10%)': entrada,
         'Parcelas SAC (20%)': parcelas,
         'Chaves (70%)': chaves,
         'Fluxo do Investidor': fluxo_investidor
     })
 
     tir = calcular_tir(fluxo_investidor)
-    moic = sum(fluxo_investidor) / valor_permuta
+    moic = sum(fluxo_investidor) / valor_pago_terreno
     payback = next((i + 1 for i, v in enumerate(np.cumsum(fluxo_investidor)) if v >= 0), None)
 
     return df, tir, moic, payback, mes_chaves
 
-# ========= INTERFACE ==========
-st.set_page_config(layout="centered")
-st.title("🏗️ Simulador do Investidor de Terreno (Permuta Física)")
+# ========= Streamlit App ==========
+st.set_page_config(layout="wide")
+st.title("🏗️ Simulador do Investidor da Permuta Física (Terreno)")
 
 with st.form("formulario"):
-    valor_permuta = st.number_input("Valor do Terreno / Permuta (R$)", value=300000.0, step=10000.0)
-    parcelas_terreno = st.number_input("Parcelas do pagamento do terreno", value=3, min_value=1)
-    juros_mensal = st.number_input("Juros mensal sobre parcelas SAC (%)", value=0.5) / 100
+    col1, col2 = st.columns(2)
 
-    inicio_vendas = st.number_input("Mês de início das vendas", value=1, min_value=1)
-    curva = st.selectbox("Velocidade de vendas", ["Normal", "Otimista", "Pessimista"])
+    with col1:
+        valor_pago_terreno = st.number_input("Valor pago pelo terreno (R$)", value=300000.0, step=10000.0)
+        parcelas_terreno = st.number_input("Parcelas do pagamento", value=3, min_value=1)
+        valor_recebido_permuta = st.number_input("Valor recebido na permuta (R$)", value=300000.0, step=10000.0)
 
-    inicio_obra = st.number_input("Mês de início da obra", value=1, min_value=1)
-    duracao_obra = st.number_input("Duração da obra (meses)", value=36, min_value=1)
+    with col2:
+        juros_mensal = st.number_input("Juros mensal sobre SAC (%)", value=0.5) / 100
+        inicio_vendas = st.number_input("Mês de início das vendas", value=1, min_value=1)
+        curva = st.selectbox("Velocidade de vendas", ["Normal", "Otimista", "Pessimista"])
+        inicio_obra = st.number_input("Mês de início da obra", value=1, min_value=1)
+        duracao_obra = st.number_input("Duração da obra (meses)", value=36, min_value=1)
 
     simular = st.form_submit_button("Simular")
 
 if simular:
     df, tir, moic, payback, mes_chaves = simular_investidor(
-        valor_permuta, int(parcelas_terreno), juros_mensal,
-        int(inicio_vendas), curva, int(inicio_obra), int(duracao_obra)
+        valor_pago_terreno,
+        valor_recebido_permuta,
+        int(parcelas_terreno),
+        juros_mensal,
+        int(inicio_vendas),
+        curva,
+        int(inicio_obra),
+        int(duracao_obra)
     )
 
     st.success(f"🏁 Entrega das chaves prevista para o mês {mes_chaves}")
@@ -134,7 +152,7 @@ if simular:
     col2.metric("MoIC", f"{moic:.2f}x")
     col3.metric("Payback", f"{payback} meses" if payback else "N/A")
 
-    st.caption("📌 A TIR considera o valor pago pelo investidor (parcelado) e os recebíveis 10/20/70 da permuta física.")
+    st.caption("📌 A TIR considera o valor pago pelo terreno (parcelado) e os recebíveis 10/20/70 da permuta física recebida.")
 
     st.subheader("📈 Gráfico Acumulado")
     fig = go.Figure()
@@ -144,3 +162,30 @@ if simular:
 
     st.download_button("📥 Baixar Excel", df.to_excel(index=False, engine='openpyxl'),
                        file_name="fluxo_investidor.xlsx")
+
+    # ===== Gráfico Didático =====
+    st.subheader("📊 Gráfico Didático: Entradas x Saídas x Acumulado")
+    fluxo = df['Fluxo do Investidor']
+    entrada_total = df['Entrada (10%)'] + df['Parcelas SAC (20%)'] + df['Chaves (70%)']
+    saida_total = [abs(val) if val < 0 else 0 for val in fluxo]
+    entrada_total = [val if val > 0 else 0 for val in fluxo]
+    acumulado = np.cumsum(fluxo)
+
+    fig_final = go.Figure()
+    fig_final.add_trace(go.Bar(x=df['Mês'], y=saida_total, name='Investimento (Saída)', marker_color='crimson'))
+    fig_final.add_trace(go.Bar(x=df['Mês'], y=entrada_total, name='Recebíveis (Entrada)', marker_color='seagreen'))
+    fig_final.add_trace(go.Scatter(x=df['Mês'], y=acumulado,
+                                   name='Fluxo Acumulado',
+                                   mode='lines+markers',
+                                   line=dict(color='royalblue', width=3)))
+
+    fig_final.update_layout(
+        barmode='relative',
+        xaxis_title='Mês',
+        yaxis_title='R$',
+        legend_title='Fluxos',
+        title='📉 Visão Completa do Fluxo de Caixa do Investidor',
+        height=600,
+        template='plotly_white'
+    )
+    st.plotly_chart(fig_final, use_container_width=True)
